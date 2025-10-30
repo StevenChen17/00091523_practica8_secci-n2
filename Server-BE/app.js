@@ -1,0 +1,87 @@
+// app.js
+import express from "express";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcrypt";
+import bodyParser from "body-parser";
+import cors from "cors";
+import * as db from "./controllers/controllers.js"
+
+const app = express();
+const PORT = 5000;
+const JWT_SECRET = "your_jwt_secret"; // Use a strong, secure key in production
+
+
+
+app.use(bodyParser.json());
+app.use(cors());
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+const users = []; // Dummy database (use a real DB in production)
+
+// Middleware: Verify Token
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) return res.status(401).json({ message: "Unauthorized" });
+
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, JWT_SECRET, (err, user) => {
+    if (err) return res.status(403).json({ message: "Invalid token" });
+    req.user = user;
+    next();
+  });
+};
+
+// Route: Register (Sign Up)
+app.post("/signup", async (req, res) => {
+  const { email, password } = req.body;
+
+  // 1. Check if user already exists
+  if (users.find((u) => u.email === email)) {
+    return res.status(409).json({ message: "User already exists" });
+  }
+
+  try {
+    // 2. Hash the password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 3. Create and store the new user (in your dummy array)
+    const newUser = {
+      id: users.length + 1, // Simple ID generation
+      email,
+      password: hashedPassword,
+    };
+    users.push(newUser);
+
+    // 4. Respond with success
+    res.status(201).json({ message: "User created successfully" });
+  } catch (error) {
+    res.status(500).json({ message: "Error registering user" });
+  }
+});
+
+// Routes
+app.post("/signin", async (req, res) => {
+  const { email, password } = req.body;
+  const user = users.find((u) => u.email === email);
+  if (!user) return res.status(404).json({ message: "User not found" });
+
+  const isPasswordValid = await bcrypt.compare(password, user.password);
+  if (!isPasswordValid) return res.status(400).json({ message: "Invalid credentials" });
+
+  const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: "1h" });
+  res.status(200).json({ token });
+});
+
+app.get("/protected", verifyToken, (req, res) => {
+  res.status(200).json({ message: "Protected data accessed", user: req.user });
+});
+
+app.get('/users', db.getUsers)
+app.get('/users/:id', db.getUserById)
+app.post('/users', db.createUser)
+app.put('/users/:id', db.updateUser)
+app.delete('/users/:id', db.deleteUser)
+
+app.listen(PORT, () => console.log(`Server running at http://localhost:${PORT}`)
+);
